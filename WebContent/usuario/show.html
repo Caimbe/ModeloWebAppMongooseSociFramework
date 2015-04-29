@@ -1,0 +1,7 @@
+<h2>Show</h2>
+  <fieldset>   <legend>Usuario</legend>   <span>login:</span> <label id='login'></label><br/>
+   <span>password:</span> <label id='password'></label><br/>
+   <span>nome:</span> <label id='nome'></label><br/>
+   <span>email:</span> <label id='email'></label><br/>
+   <span>create_time:</span> <label id='create_time'></label><br/>
+  </fieldset>  <form action='/usuario/remove' method='post' onsubmit="return confirm('Confirm DELETE?');">    <input type='hidden' name='login' value='ID'/>    <button>Delete</button>  </form>  <form action='/usuario/edit' method='get' >    <input type='hidden' name='login' value='X'/>    <button>Edit</button>  </form>

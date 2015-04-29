@@ -8,6 +8,8 @@
 #endif
 #include <stdlib.h>
 #include <signal.h>
+#include <execinfo.h>
+#include <signal.h>
 #include <iostream>
 #include <fstream>
 #include <boost/thread.hpp>
@@ -15,7 +17,6 @@
 #include <mongoose/Server.h>
 #include "util.hpp"
 #include "model/model.h"
-#include "control/usuariocontrolador.h"
 
 using namespace std;
 using namespace Mongoose;
@@ -33,10 +34,11 @@ namespace
 
 #ifdef _WIN32
     const string NAME_LOCK = "/labEstoque.lock";
+#   define ARQ_LOCK std::getenv("TMP")+NAME_LOCK
 #else
     const string NAME_LOCK = "/labEstoque.lock";
+#   define ARQ_LOCK "/tmp"+NAME_LOCK
 #endif
-#define ARQ_LOCK std::getenv("TMP")+NAME_LOCK
 
     namespace po = boost::program_options;
     volatile static bool running = true;
@@ -62,18 +64,19 @@ int main(int argc, char** argv)
 	signal(SIGSEGV, handle_signal);
 	signal(SIGABRT, handle_signal);
 
+    Opcoes op = processaOpcoes(argc, argv);
+    Server server(op.porta, op.webdir.c_str());
+    Model model;
+    UsuarioController usuario;
+
 	try
     {
-        Opcoes op = processaOpcoes(argc, argv);
-
-        Server server(op.porta, op.webdir.c_str());
-		server.setOption("enable_directory_listing", "false");
-        Model model;
-        model.open(op.connectdb);
-        UsuarioControlador usuario;
+        server.setOption("enable_directory_listing", "false");
         server.registerController(&usuario);        
         server.setOption("template_page", "/template.html");
 		server.start();		
+
+        model.open(op.connectdb);
 
         cout << "Server Up!" << endl;
 		while (running) {
@@ -82,6 +85,7 @@ int main(int argc, char** argv)
 				handle_signal(0);
 		}
 
+        server.poll();
         server.stop();
 		cout << "Server Down!" << endl;
 	}
@@ -93,7 +97,7 @@ int main(int argc, char** argv)
 	}
 	catch (std::exception& e)
 	{
-		std::cerr << "Unhandled Exception reached the top of main: "
+        std::cerr << "Exception reached the top of main: "
 			<< e.what() << ", application will now exit" << std::endl;
 		return ERROR_UNHANDLED_EXCEPTION;
 
@@ -107,8 +111,21 @@ namespace
 
     extern "C" DLL_EXPORT void handle_signal(int sig)
     {
-        cout << "Signal: " << sig << endl << "Exiting..." << endl;
         running = false;
+        cerr << "\nSignal: " << sig << endl << "Exiting..." << endl;
+
+        void *array[10];
+        size_t size;
+
+        // get void*'s for all entries on the stack
+        size = backtrace(array, 10);
+
+        // print out all the frames to stderr
+        fprintf(stderr, "Error: signal %d:\n", sig);
+        backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+        boost::this_thread::sleep(boost::posix_time::seconds(2));
+        std::exit(sig);
     }
 
     bool verificaArqLock()
@@ -152,6 +169,7 @@ namespace
         cout << "WebDir: " << retorno.webdir << endl;
 
         //makedir("tmp"); //mkdir("tmp", S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        cout << ARQ_LOCK << endl;
         ofstream arq(ARQ_LOCK);
         if (!arq.good()){
             cerr << "problemas ao criar o arquivo de trava: " << ARQ_LOCK << endl;
